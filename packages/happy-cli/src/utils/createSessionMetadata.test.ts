@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
 import { createSessionMetadata } from './createSessionMetadata';
 
@@ -151,5 +151,72 @@ describe('createSessionMetadata', () => {
         });
 
         expect(unavailable.metadata.gitBranch).toBeUndefined();
+    });
+});
+
+describe('createSessionMetadata model catalog', () => {
+    const originalModel = process.env.ANTHROPIC_MODEL;
+    const originalLabel = process.env.HAPPY_MODEL_LABEL;
+
+    beforeEach(() => {
+        mockedExecSync.mockReset();
+        mockedExecSync.mockReturnValue('main\n');
+        delete process.env.ANTHROPIC_MODEL;
+        delete process.env.HAPPY_MODEL_LABEL;
+    });
+
+    afterEach(() => {
+        if (originalModel === undefined) delete process.env.ANTHROPIC_MODEL;
+        else process.env.ANTHROPIC_MODEL = originalModel;
+        if (originalLabel === undefined) delete process.env.HAPPY_MODEL_LABEL;
+        else process.env.HAPPY_MODEL_LABEL = originalLabel;
+    });
+
+    it('publishes the configured Claude model so the app can show it', () => {
+        process.env.ANTHROPIC_MODEL = 'deepseek-flash[1m]';
+
+        const { metadata } = createSessionMetadata({ flavor: 'claude', machineId: 'machine-1' });
+
+        // The code stays the full configured id — it is what the app matches
+        // against. Only the label is shortened to survive the 16-character chip.
+        expect(metadata.currentModelCode).toBe('deepseek-flash[1m]');
+        expect(metadata.models).toEqual([
+            { code: 'deepseek-flash[1m]', value: 'deepseek-flash', description: null },
+        ]);
+    });
+
+    it('leaves a model id that already fits the chip untouched', () => {
+        process.env.ANTHROPIC_MODEL = 'deepseek-flash';
+
+        const { metadata } = createSessionMetadata({ flavor: 'claude', machineId: 'machine-1' });
+
+        expect(metadata.models).toEqual([
+            { code: 'deepseek-flash', value: 'deepseek-flash', description: null },
+        ]);
+    });
+
+    it('uses HAPPY_MODEL_LABEL for the name the composer chip shows', () => {
+        process.env.ANTHROPIC_MODEL = 'deepseek-flash[1m]';
+        process.env.HAPPY_MODEL_LABEL = 'DS Flash 1M';
+
+        const { metadata } = createSessionMetadata({ flavor: 'claude', machineId: 'machine-1' });
+
+        expect(metadata.models).toEqual([
+            { code: 'deepseek-flash[1m]', value: 'DS Flash 1M', description: null },
+        ]);
+    });
+
+    it('publishes nothing without a configured model, or for other flavors', () => {
+        const unconfigured = createSessionMetadata({ flavor: 'claude', machineId: 'machine-2' });
+
+        expect(unconfigured.metadata.models).toBeUndefined();
+        expect(unconfigured.metadata.currentModelCode).toBeUndefined();
+
+        process.env.ANTHROPIC_MODEL = 'deepseek-flash[1m]';
+
+        const codex = createSessionMetadata({ flavor: 'codex', machineId: 'machine-3' });
+
+        expect(codex.metadata.models).toBeUndefined();
+        expect(codex.metadata.currentModelCode).toBeUndefined();
     });
 });

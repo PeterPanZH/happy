@@ -10,6 +10,7 @@ import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
+import { configuredClaudeModelMetadata } from '@/utils/createSessionMetadata';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
@@ -151,6 +152,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
         ...(isSideChat ? { isSideChat: true } : {}),
+        ...configuredClaudeModelMetadata(),
     };
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)

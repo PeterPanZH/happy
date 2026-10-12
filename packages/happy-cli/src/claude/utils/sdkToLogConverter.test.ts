@@ -267,6 +267,29 @@ describe('SDKToLogConverter', () => {
             expect((opus as any)?.message.usage.context_window).toBe(1_000_000)
         })
 
+        it('should resolve a suffixed model id to the window its own session model reported', () => {
+            // The SDK keys modelUsage by the *configured* id (`deepseek-flash[1m]`)
+            // while messages report the id the API echoed back (`deepseek-flash`).
+            // That plain id is also a haiku alias here, and must not win.
+            converter.convert(resultReporting({
+                'deepseek-flash[1m]': { contextWindow: 1_000_000 },
+                'deepseek-flash': { contextWindow: 200_000 }
+            }))
+
+            const logMessage = converter.convert(assistantWithUsage('deepseek-flash'))
+
+            expect((logMessage as any)?.message.usage.context_window).toBe(1_000_000)
+        })
+
+        it('should keep the larger window when two ids share a base name, in either order', () => {
+            converter.convert(resultReporting({ 'deepseek-flash': { contextWindow: 200_000 } }))
+            converter.convert(resultReporting({ 'deepseek-flash[1m]': { contextWindow: 1_000_000 } }))
+
+            const logMessage = converter.convert(assistantWithUsage('deepseek-flash'))
+
+            expect((logMessage as any)?.message.usage.context_window).toBe(1_000_000)
+        })
+
         it('should ignore unusable window values', () => {
             converter.convert(resultReporting({ 'claude-opus-4-8': { contextWindow: 0 } }))
 

@@ -83,6 +83,32 @@ export class SDKToLogConverter {
     }
 
     /**
+     * Remember a model's context window, under both the id the SDK reports it
+     * for and that id's base name.
+     *
+     * `modelUsage` is keyed by the *configured* model id, which can carry a
+     * bracketed suffix (`deepseek-flash[1m]`), while assistant messages report
+     * the id the API echoed back (`deepseek-flash`) — the suffix is a Claude
+     * Code marker that never reaches the wire. Looking a message up by its own
+     * id would therefore miss the real entry, and can land on an unrelated one
+     * that happens to share the base name (a haiku alias, at 200k), which is
+     * how a 1M session ends up reported as 200k.
+     *
+     * When two ids collide on a base name the larger window wins: the suffixed
+     * id is the session's own model, and it is the one the messages ran on.
+     */
+    private setContextWindow(model: string, contextWindow: number): void {
+        const record = (key: string): void => {
+            const known = this.contextWindowByModel.get(key)
+            if (known === undefined || contextWindow > known) {
+                this.contextWindowByModel.set(key, contextWindow)
+            }
+        }
+        record(model)
+        record(model.replace(/\[[^\]]*\]$/, ''))
+    }
+
+    /**
      * Stamp the model's real context window onto the message usage.
      *
      * The SDK only reports `contextWindow` on result messages, which arrive
@@ -223,7 +249,7 @@ export class SDKToLogConverter {
                 for (const [model, usage] of Object.entries(resultMsg.modelUsage ?? {})) {
                     const contextWindow = usage?.contextWindow
                     if (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0) {
-                        this.contextWindowByModel.set(model, contextWindow)
+                        this.setContextWindow(model, contextWindow)
                     }
                 }
                 break

@@ -54,6 +54,50 @@ export interface SessionMetadataResult {
     metadata: Metadata;
 }
 
+/**
+ * The model catalog to publish for a Claude session, if any.
+ *
+ * Claude Code resolves its model from the environment, so the configured id is
+ * the only honest answer. Publishing it matters because the app has no other
+ * channel to learn it: without `models` it falls back to its own hardcoded
+ * Claude catalog and its `claude-opus-5-5` default, and shows that for every
+ * session no matter what actually runs. The app normalizes these two fields
+ * into its picker and composer chip — the same channel ACP agents already use
+ * (see the `models` / `currentModelCode` fields on Metadata).
+ *
+ * `value` is the label the picker and composer chip show, and the chip cuts it
+ * at 16 characters, so a long id can set HAPPY_MODEL_LABEL to something short.
+ *
+ * Exported because the Claude backend builds its metadata inline in runClaude
+ * rather than going through createSessionMetadata — the other flavors are the
+ * ones this module's factory serves.
+ */
+export function configuredClaudeModelMetadata(): Partial<Metadata> {
+    const model = process.env.ANTHROPIC_MODEL?.trim();
+    if (!model) {
+        return {};
+    }
+    const label = process.env.HAPPY_MODEL_LABEL?.trim() || shortModelLabel(model);
+    return {
+        models: [{ code: model, value: label, description: null }],
+        currentModelCode: model,
+    };
+}
+
+/**
+ * A label that survives the composer chip, which cuts at 16 characters. The
+ * bracketed suffix is the first thing to go (`deepseek-flash[1m]` becomes
+ * `deepseek-flash`), because the chip's own cut renders as `deepseek-flash[1…`,
+ * which reads as a bug rather than as a shortened name.
+ */
+function shortModelLabel(model: string): string {
+    const CHIP_LIMIT = 16;
+    if (model.length <= CHIP_LIMIT) {
+        return model;
+    }
+    return model.replace(/\[[^\]]*\]$/, '') || model;
+}
+
 function getGitBranch(cwd: string): string | undefined {
     try {
         const branch = execSync('git rev-parse --abbrev-ref HEAD', {
@@ -117,6 +161,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         ...(opts.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
         ...(opts.forkedFromMessageId ? { forkedFromMessageId: opts.forkedFromMessageId } : {}),
         ...(opts.isSideChat ? { isSideChat: true } : {}),
+        ...(opts.flavor === 'claude' ? configuredClaudeModelMetadata() : {}),
     };
 
     return { state, metadata };
